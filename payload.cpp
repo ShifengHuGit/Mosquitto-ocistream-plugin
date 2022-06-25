@@ -18,10 +18,10 @@ using namespace std;
 
 // Kafka
 static volatile sig_atomic_t run = 1;
-rd_kafka_t *rk;                                                               /* Producer instance handle */
-rd_kafka_conf_t *conf;                                                        /* Temporary configuration object */
-char errstr[512];                                                             /* librdkafka API error reporting buffer */
-char buf[512];                                                                /* Message value temporary buffer */
+rd_kafka_t *rk;        /* Producer instance handle */
+rd_kafka_conf_t *conf; /* Temporary configuration object */
+char errstr[512];      /* librdkafka API error reporting buffer */
+char buf[512];         /* Message value temporary buffer */
 char K_topic[128];
 
 static mosquitto_plugin_id_t *mosq_pid = NULL;
@@ -48,7 +48,7 @@ AuthConfig loadOCIconfig(string filepath)
 {
     if (isFileExists_stat(filepath) != true)
     {
-        printf("---Plugin--->> Config file:[%s] not found, please check the plugin file\n", filepath.c_str());
+        printf("-***- OCI Streaming Plugin -***->>> Config file:[%s] not found, please check the plugin file\n", filepath.c_str());
         exit(0);
     }
     const char *file = filepath.c_str();
@@ -100,6 +100,8 @@ AuthConfig loadOCIconfig(string filepath)
 static void
 dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *rkmessage, void *opaque)
 {
+    UNUSED(rk);
+    UNUSED(opaque);
     if (rkmessage->err)
         fprintf(stderr, "%% Message delivery failed: %s\n",
                 rd_kafka_err2str(rkmessage->err));
@@ -118,7 +120,7 @@ int initKafka(rd_kafka_conf_t *conf, AuthConfig *authInfo)
 {
     AuthConfig auth = *authInfo;
 
- // printf(">>>>>> Kafka Conf - Topic  : %s \n", topic);
+    // printf(">>>>>> Kafka Conf - Topic  : %s \n", topic);
     if (rd_kafka_conf_set(conf, "bootstrap.servers", auth.bootstrap_servers.c_str(), errstr,
                           sizeof(errstr)) != RD_KAFKA_CONF_OK)
     {
@@ -144,8 +146,8 @@ int initKafka(rd_kafka_conf_t *conf, AuthConfig *authInfo)
         fprintf(stderr, "%s\n", errstr);
         return 1;
     }
-    string sasluser= auth.TenancyName+"/"+auth.sasl_username+"/"+auth.StreamPoolID;
-    
+    string sasluser = auth.TenancyName + "/" + auth.sasl_username + "/" + auth.StreamPoolID;
+
     if (rd_kafka_conf_set(conf, "sasl.username", sasluser.c_str(), errstr,
                           sizeof(errstr)) != RD_KAFKA_CONF_OK)
     {
@@ -170,38 +172,35 @@ int initKafka(rd_kafka_conf_t *conf, AuthConfig *authInfo)
     }
     printf("---Plugin--Kafka Initialize successfully!!---\n");
     return 0;
-
 }
 
 static int callback_message(int event, void *event_data, void *userdata)
 {
+    printf("-***- OCI Streaming Plugin -***->>> CallBack for transfer data to %s.\n", K_topic);
     struct mosquitto_evt_message *ed = (mosquitto_evt_message *)event_data;
-    
+
     char *K_topic = (char *)userdata;
 
     char *K_Payload;
     UNUSED(event);
     UNUSED(userdata);
 
-   // printf("\n----CallBack-Topic  : %s \n", K_topic);
-
-
-    printf("address: %s\n", mosquitto_client_address(ed->client));
-    printf("id: %s\n", mosquitto_client_id(ed->client));
-    printf("username: %s\n", mosquitto_client_username(ed->client));
-    printf("M_Topic: %s\n", (char *)(ed->topic));
-    printf("payload: '%.*s'\n", ed->payloadlen, (char *)ed->payload);
+    printf("-***- OCI Streaming Plugin -***->>> -----MQTT MSG Coming!-----\n");
+    printf("|-------MQTT MSG Coming!------------|\n");
+    printf("|--- address: %s\n", mosquitto_client_address(ed->client));
+    printf("|--- id: %s\n", mosquitto_client_id(ed->client));
+    printf("|--- username: %s\n", mosquitto_client_username(ed->client));
+    printf("|--- M_Topic: %s\n", (char *)(ed->topic));
+    printf("|--- payload: '%.*s'\n", ed->payloadlen, (char *)ed->payload);
+    printf("|-----------------------------------|\n");
 
     size_t len = ed->payloadlen;
     K_Payload = (char *)ed->payload;
 
-    //
-    //
+    //------------------------------
     //    Kafka transfer the payload
-    //
     //------------------------------
     rd_kafka_resp_err_t err;
-
 retry:
     err = rd_kafka_producev(
         /* Producer handle */
@@ -248,7 +247,7 @@ retry:
     else
     {
         fprintf(stderr,
-                "--Plugin--kafka-sent-> %% Enqueued message (%ld bytes) "
+                "-***- OCI Streaming Plugin -***->>> Sent to Kafka %% Enqueued message (%ld bytes) "
                 "for topic %s\n",
                 len, K_topic);
     }
@@ -267,10 +266,6 @@ retry:
     rd_kafka_poll(rk, 0 /*non-blocking*/);
 
     //------------------------------
-    //
-    //
-    //
-    //
     return MOSQ_ERR_SUCCESS;
 }
 
@@ -295,46 +290,26 @@ int mosquitto_plugin_init(mosquitto_plugin_id_t *identifier, void **user_data, s
     UNUSED(opts);
     UNUSED(opt_count);
 
-
-    
-
     mosq_pid = identifier;
 
-    printf("+++-<>-+++ Initialize OCI Kafka Plugin      +++-<>-+++ \n");
-    printf("+++-<>-+++ Loading Configuration from file  +++-<>-+++ \n");
+    printf("-***- OCI Streaming Plugin -***->>> Initialize  Plugin.\n");
     //
     //   Kafka
-    //----------------------------------
 
-    /* Set bootstrap broker(s) as a comma-separated list of
-     * host or host:port (default port 9092).
-     * librdkafka will use the bootstrap brokers to acquire the full
-     * set of brokers from the cluster. */
     auth = loadOCIconfig((string) "ociplugin.cfg");
-/*
-    printf("---Plugin--ldconfig--> Tenancy is : %s \n", auth.TenancyName.c_str());
-    printf("---Plugin--ldconfig--> StreamingPool is : %s \n", auth.StreamPoolID.c_str());
-    printf("---Plugin--ldconfig--> bootstrap_servers is : %s \n", auth.bootstrap_servers.c_str());
-    printf("---Plugin--ldconfig--> security_protocol is : %s \n", auth.security_protocol.c_str());
-    printf("---Plugin--ldconfig--> sasl_mechanisms is : %s \n", auth.sasl_mechanisms.c_str());
-    printf("---Plugin--ldconfig--> sasl_username is : %s \n", auth.sasl_username.c_str());
-    printf("---Plugin--ldconfig--> sasl_password is : %s \n", auth.sasl_password.c_str());
-    printf("---Plugin--ldconfig--> Topic is : %s \n", auth.KafkaTopic.c_str());
-    printf(">>>>>> Kafka Conf - Broker : %s \n", auth.bootstrap_servers.c_str());
-    printf(">>>>>> Kafka Conf - Topic  : %s \n", auth.KafkaTopic.c_str());
-*/
+
     conf = rd_kafka_conf_new();
 
     int k_resp = initKafka(conf, &auth);
-    if(k_resp != 0)
+    if (k_resp != 0)
     {
         printf("---Plugin--Kafka initialize failed ---\n");
         exit(0);
     }
-    //K_topic = (char *)auth.KafkaTopic.c_str();
-    //printf("\nK_Topci:  %s\n", K_topic);
+
     strcpy(K_topic, auth.KafkaTopic.c_str());
-    printf("\n---Init--K_Topci:  %s\n", K_topic);
+    // printf("\n---Init--K_Topci:  %s\n", K_topic);
+    printf("-***- OCI Streaming Plugin -***->>> Completed initial phase, waitting data...\n");
 
     return mosquitto_callback_register(mosq_pid, MOSQ_EVT_MESSAGE, callback_message, NULL, (void *)K_topic);
 }
