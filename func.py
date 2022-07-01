@@ -11,8 +11,8 @@ import base64
 from fdk import response
 
 
-dbuser = "ADMIN"
-dbpwd = "P@ssw0rd123456"
+dbuser = 
+dbpwd = 
 dbsvc = "metadatadb_medium"
 dbwallet_dir = os.getenv('TNS_ADMIN')
 
